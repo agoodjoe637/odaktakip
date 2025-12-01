@@ -15,6 +15,7 @@ import Animated, {
 import CircularTimer from '../components/CircularTimer';
 import ReanimatedText from '../components/ReanimatedText';
 import SessionResultModal from '../components/SessionResultModal';
+import { saveSession } from '../services/storage';
 
 const { width } = Dimensions.get('window');
 
@@ -35,7 +36,6 @@ export default function HomeScreen() {
   const [successSound, setSuccessSound] = useState();
   const confettiRef = useRef(null);
   const appState = useRef(AppState.currentState);
-  const isFinishedRef = useRef(false);
 
   const categories = [
     { id: '1', name: "Kodlama", icon: "code-slash" },
@@ -43,6 +43,17 @@ export default function HomeScreen() {
     { id: '3', name: "Kitap Okuma", icon: "library" },
     { id: '4', name: "Spor", icon: "bicycle" },
   ];
+
+  useEffect(() => {
+    async function loadSuccessSound() {
+      try {
+        const { sound } = await Audio.Sound.createAsync(require('../../assets/success.wav'));
+        setSuccessSound(sound);
+      } catch (e) {}
+    }
+    loadSuccessSound();
+    return () => { if (successSound) successSound.unloadAsync(); };
+  }, []);
 
   useEffect(() => {
     navigation.setOptions({
@@ -55,6 +66,17 @@ export default function HomeScreen() {
       }
     });
     headerTranslateY.value = withTiming(isActive ? -150 : 0, { duration: 300 });
+  }, [isActive]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|active/) && nextAppState === 'background' && isActive) {
+        setIsActive(false);
+        setDistractionCount(prev => prev + 1);
+      }
+      appState.current = nextAppState;
+    });
+    return () => subscription.remove();
   }, [isActive]);
 
   const finishSession = useCallback((completed = false) => {
@@ -75,9 +97,26 @@ export default function HomeScreen() {
 
     if (completed) {
       if (confettiRef.current) confettiRef.current.start();
+      if (successSound) successSound.replayAsync().catch(() => {});
     }
     setResultModalVisible(true);
-  }, [category, distractionCount, initialDuration, timeLeft]);
+  }, [category, distractionCount, initialDuration, timeLeft, successSound]);
+
+  useEffect(() => {
+    let interval = null;
+    if (isActive && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+              finishSession(true);
+              return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isActive, finishSession]);
 
   const handleFinalChange = useCallback((seconds) => {
     if (isActive) return;
@@ -87,7 +126,7 @@ export default function HomeScreen() {
 
   const handleStartStop = () => {
     if (timeLeft <= 0) {
-      Alert.alert("Süre Yok", "Lütfen çarkı çevirerek bir süre belirleyin.");
+      Alert.alert("Süre Yok", "Lütfen çarkı çevirin.");
       return;
     }
     cancelAnimation(rotation);
@@ -105,7 +144,15 @@ export default function HomeScreen() {
     rotation.value = withTiming(0, { duration: 300 });
   };
 
-  const handleSaveSession = () => { setResultModalVisible(false); handleReset(); };
+  const handleSaveSession = async () => {
+    if (sessionData) {
+      await saveSession(sessionData);
+      Alert.alert("Başarılı", "Seans kaydedildi!");
+    }
+    setResultModalVisible(false);
+    handleReset();
+  };
+
   const handleDiscardSession = () => { setResultModalVisible(false); handleReset(); };
   
   const animatedHeaderStyle = useAnimatedStyle(() => ({ 
