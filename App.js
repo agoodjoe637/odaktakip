@@ -1,20 +1,66 @@
+import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
+import { useEffect } from 'react';
+import { Platform, AppState, LogBox } from 'react-native';
 
 import HomeScreen from './src/screens/HomeScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 
+// Edge-to-Edge uyarılarını terminalde gizle
+LogBox.ignoreLogs(['is not supported with edge-to-edge enabled']);
+
 const Tab = createBottomTabNavigator();
 
 export default function App() {
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      const hideNavBar = async () => {
+        try {
+          await NavigationBar.setVisibilityAsync("hidden");
+          await NavigationBar.setBehaviorAsync("overlay-swipe"); 
+        } catch (e) {
+          // Hata yutulur
+        }
+      };
+
+      hideNavBar();
+
+      const subscription = AppState.addEventListener('change', (nextAppState) => {
+        if (nextAppState === 'active') {
+          hideNavBar();
+        }
+      });
+
+      return () => subscription.remove();
+    }
+  }, []);
+
   return (
     <NavigationContainer>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
+          // KRİTİK: Alt barın yukarı kaymasını engelleyen kod
+          safeAreaInsets: { bottom: 0 }, 
+          
+          tabBarStyle: {
+            borderTopWidth: 2,
+            borderTopColor: 'tomato',
+            height: 60,
+            backgroundColor: '#fff',
+            position: 'absolute', 
+            bottom: 0, 
+            left: 0,
+            right: 0,
+            elevation: 0, 
+            paddingBottom: 0, 
+            paddingTop: 0,
+          },
           tabBarIcon: ({ focused, color, size }) => {
             let iconName;
             if (route.name === 'Ana Sayfa') {
@@ -26,6 +72,9 @@ export default function App() {
           },
           tabBarActiveTintColor: 'tomato',
           tabBarInactiveTintColor: 'gray',
+          tabBarItemStyle: {
+            paddingVertical: 5,
+          }
         })}
       >
         <Tab.Screen name="Ana Sayfa" component={HomeScreen} />
